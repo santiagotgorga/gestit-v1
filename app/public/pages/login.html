@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Iniciar sesión</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="login-fondo">
+  <form class="login-card" id="formLogin" data-testid="form-login" novalidate>
+    <h1>Gest<span>IT</span></h1>
+    <div class="sub">Gestión de activos del área de Sistemas</div>
+    <div id="msg" class="oculto" data-testid="login-mensaje" role="alert"></div>
+    <div class="campo">
+      <label for="username">Usuario</label>
+      <input type="text" id="username" name="username" autocomplete="username" data-testid="login-usuario" maxlength="100" autofocus>
+      <div class="error-campo" data-error="username"></div>
+    </div>
+    <div class="campo">
+      <label for="password">Contraseña</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" data-testid="login-password">
+      <div class="error-campo" data-error="password"></div>
+    </div>
+    <button type="submit" class="btn" id="btnIngresar" data-testid="login-ingresar">Ingresar</button>
+  </form>
+</div>
+<script src="/js/common.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const motivos = {
+    expirada: ['warn', 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.'],
+    requerida: ['info', 'Necesitás iniciar sesión para acceder a esa pantalla.'],
+    logout: ['ok', 'Cerraste sesión correctamente.'],
+  };
+  if (motivos[params.get('motivo')]) alerta('msg', ...motivos[params.get('motivo')]);
+
+  const form = document.getElementById('formLogin');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    limpiarErrores(form);
+    const btn = document.getElementById('btnIngresar');
+    btn.disabled = true;
+    const r = await api('POST', '/api/login', { username: form.username.value, password: form.password.value });
+    btn.disabled = false;
+    if (r.ok) {
+      const volver = params.get('volver');
+      // sólo se permite volver a rutas internas
+      location.replace(volver && volver.startsWith('/') && !volver.startsWith('//') ? volver : '/equipos');
+      return;
+    }
+    alerta('msg', 'error', r.data.error || 'No se pudo iniciar sesión.');
+    if (r.data.campos) marcarErrores(form, r.data.campos);
+    form.password.value = '';
+  });
+</script>
+</body>
+</html>

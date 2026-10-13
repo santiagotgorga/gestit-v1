@@ -1,0 +1,40 @@
+# GestIT V1 - levantar todo con:  docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gestit
+      POSTGRES_USER: gestit
+      POSTGRES_PASSWORD: gestit
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - gestit_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestit -d gestit"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    # Descomentá para conectarte a la base con DBeaver/pgAdmin desde tu PC
+    # ports:
+    #   - "5432:5432"
+
+  app:
+    build: ./app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://gestit:gestit@db:5432/gestit
+      PORT: 3000
+      TZ: America/Argentina/Buenos_Aires
+      # Reglas de RF-01 (se pueden acortar para probar más rápido, en minutos)
+      SESSION_TIMEOUT_MIN: ${SESSION_TIMEOUT_MIN:-30}
+      MAX_INTENTOS: ${MAX_INTENTOS:-5}
+      BLOQUEO_MIN: ${BLOQUEO_MIN:-15}
+    ports:
+      - "3000:3000"
+
+volumes:
+  gestit_db:

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Usuarios</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <h1>Usuarios del sistema</h1>
+  <div id="msg" class="oculto" data-testid="usuarios-mensaje" role="alert"></div>
+
+  <form class="card" id="formNuevo" data-testid="form-nuevo-usuario" novalidate autocomplete="off">
+    <h2>Nuevo usuario</h2>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="username" class="obligatorio">Nombre de usuario</label>
+        <input type="text" id="username" name="username" maxlength="30" data-testid="usuario-username">
+        <div class="ayuda">3 a 30 caracteres: letras, números, punto, guion o guion bajo.</div>
+        <div class="error-campo" data-error="username" data-testid="error-username"></div>
+      </div>
+      <div class="campo ancho">
+        <label for="nombre" class="obligatorio">Nombre y apellido</label>
+        <input type="text" id="nombre" name="nombre" maxlength="100" data-testid="usuario-nombre">
+        <div class="error-campo" data-error="nombre" data-testid="error-nombre"></div>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="rol" class="obligatorio">Rol</label>
+        <select id="rol" name="rol" data-testid="usuario-rol">
+          <option value="">Seleccioná un rol</option><option>Administrador</option><option>Operador</option>
+        </select>
+        <div class="error-campo" data-error="rol" data-testid="error-rol"></div>
+      </div>
+      <div class="campo ancho">
+        <label for="password" class="obligatorio">Contraseña</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" data-testid="usuario-password">
+        <div class="ayuda">Mínimo 8 caracteres, con al menos una letra y un número.</div>
+        <div class="error-campo" data-error="password" data-testid="error-password"></div>
+      </div>
+    </div>
+    <button type="submit" class="btn" data-testid="btn-crear-usuario">Crear usuario</button>
+  </form>
+
+  <div class="card">
+    <div class="tabla-cont">
+      <table data-testid="tabla-usuarios">
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<template id="tplEditar">
+  <div class="modal-fondo">
+    <form class="modal" data-testid="modal-editar-usuario" novalidate>
+      <h2 class="tit">Editar usuario</h2>
+      <div class="campo">
+        <label for="eNombre" class="obligatorio">Nombre y apellido</label>
+        <input type="text" id="eNombre" name="nombre" maxlength="100" data-testid="editar-nombre">
+        <div class="error-campo" data-error="nombre"></div>
+      </div>
+      <div class="campo">
+        <label for="eRol" class="obligatorio">Rol</label>
+        <select id="eRol" name="rol" data-testid="editar-rol"><option>Administrador</option><option>Operador</option></select>
+        <div class="error-campo" data-error="rol"></div>
+      </div>
+      <div class="msgModal oculto" role="alert" data-testid="modal-mensaje"></div>
+      <div class="acciones">
+        <button type="button" class="btn sec cancelar" data-testid="btn-cancelar-editar-usuario">Cancelar</button>
+        <button type="submit" class="btn" data-testid="btn-guardar-editar-usuario">Guardar</button>
+      </div>
+    </form>
+  </div>
+</template>
+
+<template id="tplPassword">
+  <div class="modal-fondo">
+    <form class="modal" data-testid="modal-password" novalidate autocomplete="off">
+      <h2 class="tit">Cambiar contraseña</h2>
+      <div class="campo">
+        <label for="pPass" class="obligatorio">Nueva contraseña</label>
+        <input type="password" id="pPass" name="password" autocomplete="new-password" data-testid="input-nueva-password">
+        <div class="ayuda">Mínimo 8 caracteres, con al menos una letra y un número.</div>
+        <div class="error-campo" data-error="password"></div>
+      </div>
+      <div class="msgModal oculto" role="alert" data-testid="modal-mensaje"></div>
+      <div class="acciones">
+        <button type="button" class="btn sec cancelar" data-testid="btn-cancelar-password">Cancelar</button>
+        <button type="submit" class="btn" data-testid="btn-guardar-password">Guardar</button>
+      </div>
+    </form>
+  </div>
+</template>
+
+<script src="/js/common.js"></script>
+<script>
+  let lista = [];
+  async function cargar() {
+    const r = await api('GET', '/api/usuarios');
+    if (!r.ok) { alerta('msg', 'error', r.data.error); return; }
+    lista = r.data;
+    document.getElementById('cuerpo').innerHTML = lista.map((u) => `
+      <tr data-testid="fila-usuario" data-username="${esc(u.username)}">
+        <td class="mono">${esc(u.username)}${u.id === USUARIO.id ? ' <span class="ayuda">(vos)</span>' : ''}</td>
+        <td>${esc(u.nombre)}</td>
+        <td>${esc(u.rol)}</td>
+        <td>${u.activo ? '<span class="estado estado-Disponible">Activo</span>' : '<span class="estado inactivo">Desactivado</span>'}</td>
+        <td>${esc(u.creado)}</td>
+        <td class="fila">
+          <button class="btn sec chico" data-accion="editar" data-id="${u.id}" data-testid="btn-editar-${esc(u.username)}">Editar</button>
+          <button class="btn sec chico" data-accion="password" data-id="${u.id}" data-testid="btn-password-${esc(u.username)}">Contraseña</button>
+          ${u.activo
+            ? `<button class="btn peligro chico" data-accion="desactivar" data-id="${u.id}" data-testid="btn-desactivar-${esc(u.username)}">Desactivar</button>`
+            : `<button class="btn sec chico" data-accion="activar" data-id="${u.id}" data-testid="btn-activar-${esc(u.username)}">Activar</button>`}
+        </td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('formNuevo').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    limpiarErrores(f);
+    const r = await api('POST', '/api/usuarios', { username: f.username.value, nombre: f.nombre.value, rol: f.rol.value, password: f.password.value });
+    if (!r.ok) { alerta('msg', 'error', r.data.error); marcarErrores(f, r.data.campos); return; }
+    alerta('msg', 'ok', r.data.mensaje);
+    f.reset();
+    cargar();
+  });
+
+  function modal(tpl, u, alGuardar) {
+    const nodo = document.getElementById(tpl).content.firstElementChild.cloneNode(true);
+    document.body.appendChild(nodo);
+    const f = nodo.querySelector('form');
+    f.querySelector('.tit').textContent += ' · ' + u.username;
+    f.querySelector('.cancelar').onclick = () => nodo.remove();
+    f.addEventListener('submit', async (e2) => {
+      e2.preventDefault();
+      limpiarErrores(f);
+      const r = await alGuardar(f);
+      if (!r.ok) { alerta(f.querySelector('.msgModal'), 'error', r.data.error); marcarErrores(f, r.data.campos); return; }
+      nodo.remove();
+      alerta('msg', r.data.sinCambios ? 'info' : 'ok', r.data.mensaje);
+      cargar();
+    });
+    return f;
+  }
+
+  document.getElementById('cuerpo').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-accion]');
+    if (!b) return;
+    const u = lista.find((x) => String(x.id) === b.dataset.id);
+    const acc = b.dataset.accion;
+    if (acc === 'editar') {
+      const f = modal('tplEditar', u, (f2) => api('PUT', `/api/usuarios/${u.id}`, { nombre: f2.nombre.value, rol: f2.rol.value }));
+      f.nombre.value = u.nombre; f.rol.value = u.rol;
+      return;
+    }
+    if (acc === 'password') {
+      modal('tplPassword', u, (f2) => api('POST', `/api/usuarios/${u.id}/password`, { password: f2.password.value }));
+      return;
+    }
+    if (acc === 'desactivar') {
+      const ok = await confirmar({ titulo: 'Desactivar usuario', texto: `«${u.username}» perderá el acceso al sistema de inmediato. Sus registros de auditoría se conservan.`, boton: 'Desactivar', peligro: true });
+      if (!ok) return;
+    }
+    const r = await api('POST', `/api/usuarios/${u.id}/${acc}`);
+    alerta('msg', r.ok ? 'ok' : 'error', r.ok ? r.data.mensaje : r.data.error);
+    cargar();
+  });
+
+  (async () => { await iniciarLayout('usuarios'); cargar(); })();
+</script>
+</body>
+</html>

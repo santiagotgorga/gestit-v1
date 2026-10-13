@@ -1,0 +1,17 @@
+{
+  "name": "gestit-v1",
+  "version": "1.0.0",
+  "description": "GestIT V1 - Gestión de activos IT (TPO Testing de Aplicaciones - Grupo 12)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "reset": "node scripts/reset.js",
+    "seed:masivo": "node scripts/seed-masivo.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}

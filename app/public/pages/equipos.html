@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Equipos</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <div class="entre">
+    <h1>Inventario de equipos</h1>
+    <a class="btn" href="/equipos/nuevo" data-testid="btn-nuevo-equipo">+ Registrar equipo</a>
+  </div>
+  <div id="msg" class="oculto" data-testid="equipos-mensaje"></div>
+
+  <form class="card" id="formFiltros" data-testid="form-filtros" novalidate>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="q">Buscar</label>
+        <input type="text" id="q" name="q" maxlength="100" placeholder="Código, marca, modelo o número de serie" data-testid="filtro-texto">
+      </div>
+      <div class="campo">
+        <label for="categoria">Categoría</label>
+        <select id="categoria" name="categoria" data-testid="filtro-categoria"><option value="">Todas</option></select>
+      </div>
+      <div class="campo">
+        <label for="estado">Estado</label>
+        <select id="estado" name="estado" data-testid="filtro-estado">
+          <option value="">Todos</option>
+          <option>Disponible</option><option>Asignado</option><option>En reparación</option><option>Baja</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="incluirBajas" name="incluirBajas" data-testid="filtro-incluir-bajas"> Incluir dados de baja</label>
+      <div class="campo fila">
+        <button type="submit" class="btn" data-testid="btn-buscar">Buscar</button>
+        <button type="button" class="btn sec" id="btnLimpiar" data-testid="btn-limpiar-filtros">Limpiar filtros</button>
+      </div>
+    </div>
+    <div class="chips" id="chips" data-testid="filtros-activos"></div>
+  </form>
+
+  <div class="card">
+    <div class="tabla-cont">
+      <table data-testid="tabla-equipos">
+        <thead><tr><th>Código</th><th>Marca</th><th>Modelo</th><th>N.º de serie</th><th>Categoría</th><th>Estado</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table>
+    </div>
+    <div id="sinResultados" class="vacio oculto" data-testid="equipos-sin-resultados"></div>
+    <div class="paginacion" id="paginacion" data-testid="equipos-paginacion"></div>
+  </div>
+</main>
+<script src="/js/common.js"></script>
+<script>
+  const form = document.getElementById('formFiltros');
+  let categorias = [];
+
+  function filtrosDesdeURL() {
+    const p = new URLSearchParams(location.search);
+    form.q.value = p.get('q') || '';
+    form.categoria.value = p.get('categoria') || '';
+    form.estado.value = p.get('estado') || '';
+    form.incluirBajas.checked = p.get('incluirBajas') === '1';
+    return Math.max(1, parseInt(p.get('pagina') || '1', 10) || 1);
+  }
+  function filtrosActuales(pagina) {
+    const p = new URLSearchParams();
+    if (form.q.value.trim()) p.set('q', form.q.value.trim());
+    if (form.categoria.value) p.set('categoria', form.categoria.value);
+    if (form.estado.value) p.set('estado', form.estado.value);
+    if (form.incluirBajas.checked) p.set('incluirBajas', '1');
+    if (pagina && pagina > 1) p.set('pagina', pagina);
+    return p;
+  }
+  // RF-06: filtros aplicados visibles
+  function pintarChips(p) {
+    const chips = [];
+    if (p.get('q')) chips.push(`Texto: “${esc(p.get('q'))}”`);
+    if (p.get('categoria')) {
+      const c = categorias.find((x) => String(x.id) === p.get('categoria'));
+      chips.push(`Categoría: ${esc(c ? c.nombre : p.get('categoria'))}`);
+    }
+    if (p.get('estado')) chips.push(`Estado: ${esc(p.get('estado'))}`);
+    if (p.get('incluirBajas')) chips.push('Incluye dados de baja');
+    document.getElementById('chips').innerHTML = chips.length
+      ? '<span class="ayuda">Filtros aplicados:</span>' + chips.map((c) => `<span class="chip" data-testid="chip-filtro">${c}</span>`).join('')
+      : '';
+  }
+
+  async function cargar(pagina) {
+    const p = filtrosActuales(pagina);
+    history.replaceState(null, '', '/equipos' + (p.toString() ? '?' + p : ''));
+    pintarChips(p);
+    const r = await api('GET', '/api/equipos?' + p);
+    const cuerpo = document.getElementById('cuerpo');
+    const sin = document.getElementById('sinResultados');
+    if (!r.ok) { alerta('msg', 'error', r.data.error); return; }
+    if (!r.data.total) {
+      cuerpo.innerHTML = '';
+      document.querySelector('[data-testid=tabla-equipos]').classList.add('oculto');
+      sin.classList.remove('oculto');
+      const hayFiltros = [...p.keys()].some((k) => k !== 'pagina');
+      sin.textContent = hayFiltros
+        ? 'No se encontraron equipos que coincidan con la búsqueda y los filtros aplicados. Probá con otros criterios o limpiá los filtros.'
+        : 'Todavía no hay equipos cargados en el inventario.';
+      document.getElementById('paginacion').innerHTML = '';
+      return;
+    }
+    document.querySelector('[data-testid=tabla-equipos]').classList.remove('oculto');
+    sin.classList.add('oculto');
+    cuerpo.innerHTML = r.data.equipos.map((e) => `
+      <tr data-testid="fila-equipo" data-codigo="${esc(e.codigo)}">
+        <td class="mono"><a href="/equipos/${encodeURIComponent(e.codigo)}" data-testid="link-ficha-${esc(e.codigo)}">${esc(e.codigo)}</a></td>
+        <td>${esc(e.marca)}</td><td>${esc(e.modelo)}</td><td class="mono">${esc(e.numero_serie)}</td>
+        <td>${esc(e.categoria)}</td><td>${badgeEstado(e.estado)}</td>
+      </tr>`).join('');
+    const pag = document.getElementById('paginacion');
+    pag.innerHTML = paginacionHTML(r.data, 'equipos');
+    pag.querySelectorAll('[data-pag]').forEach((b) => b.addEventListener('click', () => cargar(parseInt(b.dataset.pag, 10))));
+  }
+
+  form.addEventListener('submit', (ev) => { ev.preventDefault(); cargar(1); });
+  ['categoria', 'estado', 'incluirBajas'].forEach((n) => form[n].addEventListener('change', () => cargar(1)));
+  // RF-06: limpiar todos los filtros en una sola acción
+  document.getElementById('btnLimpiar').addEventListener('click', () => { form.reset(); cargar(1); });
+
+  (async () => {
+    await iniciarLayout('equipos');
+    leerFlash('msg');
+    const r = await api('GET', '/api/categorias?todas=1');
+    categorias = r.data;
+    form.categoria.innerHTML = '<option value="">Todas</option>' + categorias.map((c) =>
+      `<option value="${c.id}">${esc(c.nombre)}${c.activa ? '' : ' (desactivada)'}</option>`).join('');
+    const pagina = filtrosDesdeURL();
+    cargar(pagina);
+  })();
+</script>
+</body>
+</html>

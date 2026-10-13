@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Ficha de equipo</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <div class="entre">
+    <h1>Ficha del equipo</h1>
+    <a class="btn sec" href="/equipos" data-testid="btn-volver-listado">← Volver al listado</a>
+  </div>
+  <div id="msg" class="oculto" data-testid="ficha-mensaje" role="alert"></div>
+
+  <div id="contenido" class="oculto">
+    <div class="card">
+      <div class="entre">
+        <div>
+          <div class="codigo-grande" id="codigo" data-testid="ficha-codigo"></div>
+          <div id="estadoBadge" data-testid="ficha-estado"></div>
+        </div>
+        <div class="fila">
+          <a class="btn sec" id="btnEditar" data-testid="btn-editar-equipo">Editar datos</a>
+          <button class="btn" id="btnCambiarEstado" data-testid="btn-cambiar-estado">Cambiar estado</button>
+          <button class="btn peligro oculto" id="btnBaja" data-testid="btn-dar-de-baja">Dar de baja</button>
+        </div>
+      </div>
+      <div id="avisoBaja" class="oculto ayuda" data-testid="aviso-baja"></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+      <div class="datos">
+        <div class="dato"><div class="et">Marca</div><div class="val" id="marca" data-testid="ficha-marca"></div></div>
+        <div class="dato"><div class="et">Modelo</div><div class="val" id="modelo" data-testid="ficha-modelo"></div></div>
+        <div class="dato"><div class="et">Número de serie</div><div class="val mono" id="serie" data-testid="ficha-serie"></div></div>
+        <div class="dato"><div class="et">Categoría</div><div class="val" id="categoria" data-testid="ficha-categoria"></div></div>
+        <div class="dato"><div class="et">Fecha de alta</div><div class="val" id="alta" data-testid="ficha-fecha-alta"></div></div>
+        <div class="dato"><div class="et">Último cambio de estado</div><div class="val" id="ultimo" data-testid="ficha-fecha-ultimo-cambio"></div></div>
+        <div class="dato" style="grid-column:1/-1"><div class="et">Observaciones</div><div class="val" id="obs" data-testid="ficha-observaciones"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Historial de estados</h2>
+      <div class="tabla-cont">
+        <table data-testid="tabla-historial">
+          <thead><tr><th>Fecha y hora</th><th>Estado anterior</th><th>Estado nuevo</th><th>Usuario</th><th>Motivo</th></tr></thead>
+          <tbody id="historial"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<template id="tplEstado">
+  <div class="modal-fondo">
+    <form class="modal" data-testid="modal-cambiar-estado" novalidate>
+      <h2 class="tit">Cambiar estado</h2>
+      <p class="ayuda">Estado actual: <b class="actual"></b></p>
+      <div class="campo campoEstado">
+        <label for="nuevoEstado" class="obligatorio">Nuevo estado</label>
+        <select id="nuevoEstado" name="estado" data-testid="select-nuevo-estado"></select>
+        <div class="error-campo" data-error="estado"></div>
+      </div>
+      <div class="campo">
+        <label for="motivo" class="obligatorio">Motivo</label>
+        <textarea id="motivo" name="motivo" maxlength="500" data-testid="input-motivo" placeholder="Describí el motivo del cambio (entre 10 y 500 caracteres)"></textarea>
+        <div class="ayuda"><span class="contador" data-testid="contador-motivo">0</span>/500 caracteres · mínimo 10</div>
+        <div class="error-campo" data-error="motivo" data-testid="error-motivo"></div>
+      </div>
+      <div class="msgModal oculto" data-testid="modal-mensaje" role="alert"></div>
+      <div class="acciones">
+        <button type="button" class="btn sec cancelar" data-testid="btn-cancelar-estado">Cancelar</button>
+        <button type="submit" class="btn confirmar" data-testid="btn-confirmar-estado">Confirmar</button>
+        <button type="button" class="btn recargar oculto" data-testid="btn-recargar-ficha">Recargar ficha</button>
+      </div>
+    </form>
+  </div>
+</template>
+
+<script src="/js/common.js"></script>
+<script>
+  const codigo = decodeURIComponent(location.pathname.split('/')[2] || '');
+  let ficha = null;
+
+  async function cargar() {
+    const r = await api('GET', '/api/equipos/' + encodeURIComponent(codigo));
+    if (!r.ok) {
+      // RF-04: código inexistente -> mensaje de no encontrado
+      alerta('msg', 'error', r.data.error || 'No se pudo cargar el equipo.');
+      document.getElementById('contenido').classList.add('oculto');
+      return;
+    }
+    ficha = r.data;
+    const e = ficha.equipo;
+    document.getElementById('contenido').classList.remove('oculto');
+    document.getElementById('codigo').textContent = e.codigo;
+    document.getElementById('estadoBadge').innerHTML = badgeEstado(e.estado);
+    document.getElementById('marca').textContent = e.marca;
+    document.getElementById('modelo').textContent = e.modelo;
+    document.getElementById('serie').textContent = e.numero_serie;
+    document.getElementById('categoria').textContent = e.categoria + (e.categoria_activa ? '' : ' (desactivada)');
+    document.getElementById('alta').textContent = e.fecha_alta;
+    document.getElementById('ultimo').textContent = e.fecha_ultimo_cambio;
+    document.getElementById('obs').textContent = e.observaciones || '—';
+
+    const btnEditar = document.getElementById('btnEditar');
+    btnEditar.classList.toggle('oculto', !ficha.editable);
+    btnEditar.href = `/equipos/${encodeURIComponent(e.codigo)}/editar`;
+
+    const sinBaja = ficha.transiciones.filter((t) => t !== 'Baja');
+    document.getElementById('btnCambiarEstado').classList.toggle('oculto', sinBaja.length === 0);
+
+    // HU-09: el botón de baja sólo existe para el Administrador
+    const btnBaja = document.getElementById('btnBaja');
+    const aviso = document.getElementById('avisoBaja');
+    const esAdmin = USUARIO.rol === 'Administrador';
+    btnBaja.classList.toggle('oculto', !esAdmin || e.estado === 'Baja');
+    btnBaja.disabled = e.estado === 'Asignado';
+    aviso.classList.toggle('oculto', !(esAdmin && e.estado === 'Asignado') && e.estado !== 'Baja');
+    aviso.textContent = e.estado === 'Baja'
+      ? 'Este equipo está dado de baja: no admite edición ni cambios de estado.'
+      : 'Para dar de baja este equipo primero registrá su devolución (cambiá el estado a «Disponible»).';
+
+    document.getElementById('historial').innerHTML = ficha.historial.map((h) => `
+      <tr data-testid="fila-historial">
+        <td class="mono">${esc(h.fecha)}</td>
+        <td>${h.estado_anterior ? badgeEstado(h.estado_anterior) : '—'}</td>
+        <td>${badgeEstado(h.estado_nuevo)}</td>
+        <td>${esc(h.usuario)}</td>
+        <td>${esc(h.motivo)}</td>
+      </tr>`).join('');
+  }
+
+  function abrirModal(esBaja) {
+    const nodo = document.getElementById('tplEstado').content.firstElementChild.cloneNode(true);
+    document.body.appendChild(nodo);
+    const f = nodo.querySelector('form');
+    const e = ficha.equipo;
+    f.querySelector('.actual').textContent = e.estado;
+    if (esBaja) {
+      f.querySelector('.tit').textContent = 'Dar de baja el equipo ' + e.codigo;
+      f.querySelector('.campoEstado').classList.add('oculto');
+      f.estado.innerHTML = '<option>Baja</option>';
+      f.querySelector('.confirmar').textContent = 'Dar de baja';
+      f.querySelector('.confirmar').classList.add('peligro');
+      f.setAttribute('data-testid', 'modal-dar-de-baja');
+    } else {
+      f.estado.innerHTML = '<option value="">Seleccioná el nuevo estado</option>' +
+        ficha.transiciones.filter((t) => t !== 'Baja').map((t) => `<option>${esc(t)}</option>`).join('');
+    }
+    const cont = f.querySelector('.contador');
+    f.motivo.addEventListener('input', () => { cont.textContent = f.motivo.value.trim().length; });
+    f.querySelector('.cancelar').onclick = () => nodo.remove();
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      limpiarErrores(f);
+      const msg = f.querySelector('.msgModal');
+      if (!f.estado.value) { marcarErrores(f, { estado: 'Seleccioná el nuevo estado.' }); return; }
+      if (esBaja) {
+        const ok = await confirmar({
+          titulo: '¿Confirmás la baja?',
+          texto: `El equipo ${e.codigo} quedará dado de baja de forma definitiva: no podrá editarse ni cambiar de estado. Su historial se conserva.`,
+          boton: 'Sí, dar de baja', peligro: true,
+        });
+        if (!ok) return;
+      }
+      const r = await api('POST', `/api/equipos/${encodeURIComponent(e.codigo)}/estado`,
+        { estado: f.estado.value, motivo: f.motivo.value, version: e.version });
+      if (r.ok) { nodo.remove(); alerta('msg', 'ok', r.data.mensaje); cargar(); return; }
+      alerta(msg, r.status === 409 ? 'warn' : 'error', r.data.error);
+      marcarErrores(f, r.data.campos);
+      if (r.status === 409) { // RF-05: conflicto de concurrencia
+        f.querySelector('.confirmar').classList.add('oculto');
+        const rec = f.querySelector('.recargar');
+        rec.classList.remove('oculto');
+        rec.onclick = () => { nodo.remove(); alerta('msg'); cargar(); };
+      }
+    });
+  }
+
+  document.getElementById('btnCambiarEstado').addEventListener('click', () => abrirModal(false));
+  document.getElementById('btnBaja').addEventListener('click', () => abrirModal(true));
+
+  (async () => {
+    await iniciarLayout('equipos');
+    leerFlash('msg');
+    cargar();
+  })();
+</script>
+</body>
+</html>

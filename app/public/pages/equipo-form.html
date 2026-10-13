@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Equipo</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <div class="entre">
+    <h1 id="titulo" data-testid="form-equipo-titulo">Registrar equipo</h1>
+    <a class="btn sec" id="btnVolver" href="/equipos" data-testid="btn-volver">← Volver</a>
+  </div>
+  <div id="msg" class="oculto" data-testid="form-equipo-mensaje" role="alert"></div>
+
+  <form class="card" id="formEquipo" data-testid="form-equipo" novalidate>
+    <div class="fila oculto" id="soloLectura">
+      <div class="campo">
+        <label>Código interno</label>
+        <input type="text" id="codigo" data-testid="equipo-codigo" readonly disabled>
+        <div class="ayuda">Asignado por el sistema. No editable.</div>
+      </div>
+      <div class="campo">
+        <label>Estado</label>
+        <input type="text" id="estadoActual" data-testid="equipo-estado" readonly disabled>
+        <div class="ayuda">Se modifica desde la ficha con «Cambiar estado».</div>
+      </div>
+    </div>
+    <div id="infoAlta" class="alerta info">El código interno se asigna automáticamente al guardar y el equipo se crea en estado <b>Disponible</b>.</div>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="marca" class="obligatorio">Marca</label>
+        <input type="text" id="marca" name="marca" maxlength="50" data-testid="equipo-marca">
+        <div class="error-campo" data-error="marca" data-testid="error-marca"></div>
+      </div>
+      <div class="campo ancho">
+        <label for="modelo" class="obligatorio">Modelo</label>
+        <input type="text" id="modelo" name="modelo" maxlength="80" data-testid="equipo-modelo">
+        <div class="error-campo" data-error="modelo" data-testid="error-modelo"></div>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="numero_serie" class="obligatorio">Número de serie</label>
+        <input type="text" id="numero_serie" name="numero_serie" maxlength="50" data-testid="equipo-serie">
+        <div class="error-campo" data-error="numero_serie" data-testid="error-numero-serie"></div>
+      </div>
+      <div class="campo ancho">
+        <label for="categoria_id" class="obligatorio">Categoría</label>
+        <select id="categoria_id" name="categoria_id" data-testid="equipo-categoria"></select>
+        <div class="error-campo" data-error="categoria_id" data-testid="error-categoria"></div>
+      </div>
+    </div>
+    <div class="campo">
+      <label for="observaciones">Observaciones <span class="ayuda">(opcional, máx. 500 caracteres)</span></label>
+      <textarea id="observaciones" name="observaciones" maxlength="500" data-testid="equipo-observaciones"></textarea>
+      <div class="error-campo" data-error="observaciones" data-testid="error-observaciones"></div>
+    </div>
+    <div class="fila">
+      <button type="submit" class="btn" id="btnGuardar" data-testid="btn-guardar-equipo">Guardar</button>
+      <a class="btn sec" id="btnCancelar" href="/equipos" data-testid="btn-cancelar-equipo">Cancelar</a>
+    </div>
+  </form>
+</main>
+<script src="/js/common.js"></script>
+<script>
+  const form = document.getElementById('formEquipo');
+  const m = location.pathname.match(/^\/equipos\/([^/]+)\/editar$/);
+  const codigoEdicion = m ? decodeURIComponent(m[1]) : null;
+
+  function opcionesCategorias(cats, actual) {
+    let html = '<option value="">Seleccioná una categoría</option>';
+    html += cats.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+    // RF-06: una categoría desactivada se conserva en los equipos que ya la tienen
+    if (actual && !cats.some((c) => c.id === actual.id)) {
+      html += `<option value="${actual.id}">${esc(actual.nombre)} (desactivada)</option>`;
+    }
+    form.categoria_id.innerHTML = html;
+  }
+
+  (async () => {
+    await iniciarLayout('equipos');
+    const cats = (await api('GET', '/api/categorias')).data; // sólo activas
+    if (!codigoEdicion) { opcionesCategorias(cats); return; }
+
+    document.title = 'GestIT · Editar equipo';
+    document.getElementById('titulo').textContent = 'Editar equipo';
+    document.getElementById('infoAlta').classList.add('oculto');
+    document.getElementById('soloLectura').classList.remove('oculto');
+    const volver = '/equipos/' + encodeURIComponent(codigoEdicion);
+    document.getElementById('btnVolver').href = volver;
+    document.getElementById('btnCancelar').href = volver;
+
+    const r = await api('GET', '/api/equipos/' + encodeURIComponent(codigoEdicion));
+    if (!r.ok) { alerta('msg', 'error', r.data.error); form.classList.add('oculto'); return; }
+    const e = r.data.equipo;
+    opcionesCategorias(cats, { id: e.categoria_id, nombre: e.categoria });
+    form.codigo.value = e.codigo;
+    document.getElementById('estadoActual').value = e.estado;
+    form.marca.value = e.marca; form.modelo.value = e.modelo; form.numero_serie.value = e.numero_serie;
+    form.categoria_id.value = e.categoria_id; form.observaciones.value = e.observaciones || '';
+    if (!r.data.editable) {
+      alerta('msg', 'warn', 'Un equipo dado de baja no admite edición.');
+      form.querySelectorAll('input,select,textarea,button').forEach((x) => { x.disabled = true; });
+    }
+  })();
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    limpiarErrores(form);
+    const datos = {
+      marca: form.marca.value, modelo: form.modelo.value, numero_serie: form.numero_serie.value,
+      categoria_id: form.categoria_id.value, observaciones: form.observaciones.value,
+    };
+    const btn = document.getElementById('btnGuardar');
+    btn.disabled = true;
+    const r = codigoEdicion
+      ? await api('PUT', '/api/equipos/' + encodeURIComponent(codigoEdicion), datos)
+      : await api('POST', '/api/equipos', datos);
+    btn.disabled = false;
+    if (!r.ok) {
+      alerta('msg', 'error', r.data.error);
+      marcarErrores(form, r.data.campos);
+      return;
+    }
+    if (r.data.sinCambios) { alerta('msg', 'info', r.data.mensaje); return; }
+    flash('ok', r.data.mensaje);
+    location.href = '/equipos/' + encodeURIComponent(codigoEdicion || r.data.codigo);
+  });
+</script>
+</body>
+</html>

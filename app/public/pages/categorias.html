@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Categorías</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <h1>Categorías de equipos</h1>
+  <div id="msg" class="oculto" data-testid="categorias-mensaje" role="alert"></div>
+
+  <form class="card" id="formNueva" data-testid="form-nueva-categoria" novalidate>
+    <h2>Nueva categoría</h2>
+    <div class="fila">
+      <div class="campo ancho">
+        <label for="nombre" class="obligatorio">Nombre</label>
+        <input type="text" id="nombre" name="nombre" maxlength="50" data-testid="categoria-nombre">
+        <div class="error-campo" data-error="nombre" data-testid="error-categoria-nombre"></div>
+      </div>
+      <div class="campo"><button type="submit" class="btn" data-testid="btn-crear-categoria">Crear categoría</button></div>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="tabla-cont">
+      <table data-testid="tabla-categorias">
+        <thead><tr><th>Nombre</th><th>Estado</th><th>Equipos asociados</th><th>Acciones</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table>
+    </div>
+    <p class="ayuda">Una categoría desactivada deja de ofrecerse al registrar equipos, pero se conserva en los equipos que ya la tienen. Sólo pueden eliminarse las categorías sin equipos asociados.</p>
+  </div>
+</main>
+
+<template id="tplRenombrar">
+  <div class="modal-fondo">
+    <form class="modal" data-testid="modal-renombrar-categoria" novalidate>
+      <h2>Renombrar categoría</h2>
+      <div class="campo">
+        <label for="nuevoNombre" class="obligatorio">Nuevo nombre</label>
+        <input type="text" id="nuevoNombre" name="nombre" maxlength="50" data-testid="input-nuevo-nombre">
+        <div class="error-campo" data-error="nombre" data-testid="error-nuevo-nombre"></div>
+      </div>
+      <div class="msgModal oculto" role="alert" data-testid="modal-mensaje"></div>
+      <div class="acciones">
+        <button type="button" class="btn sec cancelar" data-testid="btn-cancelar-renombrar">Cancelar</button>
+        <button type="submit" class="btn" data-testid="btn-guardar-renombrar">Guardar</button>
+      </div>
+    </form>
+  </div>
+</template>
+
+<script src="/js/common.js"></script>
+<script>
+  let lista = [];
+  async function cargar() {
+    const r = await api('GET', '/api/categorias?todas=1');
+    lista = r.data;
+    document.getElementById('cuerpo').innerHTML = lista.map((c) => `
+      <tr data-testid="fila-categoria" data-nombre="${esc(c.nombre)}">
+        <td>${esc(c.nombre)}</td>
+        <td>${c.activa ? '<span class="estado estado-Disponible">Activa</span>' : '<span class="estado inactivo">Desactivada</span>'}</td>
+        <td>${c.equipos}</td>
+        <td class="fila">
+          <button class="btn sec chico" data-accion="renombrar" data-id="${c.id}" data-testid="btn-renombrar-${esc(c.nombre)}">Renombrar</button>
+          ${c.activa
+            ? `<button class="btn sec chico" data-accion="desactivar" data-id="${c.id}" data-testid="btn-desactivar-${esc(c.nombre)}">Desactivar</button>`
+            : `<button class="btn sec chico" data-accion="activar" data-id="${c.id}" data-testid="btn-activar-${esc(c.nombre)}">Activar</button>`}
+          <button class="btn peligro chico" data-accion="eliminar" data-id="${c.id}" data-testid="btn-eliminar-${esc(c.nombre)}">Eliminar</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('formNueva').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    limpiarErrores(f);
+    const r = await api('POST', '/api/categorias', { nombre: f.nombre.value });
+    if (!r.ok) { alerta('msg', 'error', r.data.error); marcarErrores(f, r.data.campos); return; }
+    alerta('msg', 'ok', r.data.mensaje);
+    f.reset();
+    cargar();
+  });
+
+  document.getElementById('cuerpo').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-accion]');
+    if (!b) return;
+    const c = lista.find((x) => String(x.id) === b.dataset.id);
+    const acc = b.dataset.accion;
+    if (acc === 'renombrar') {
+      const nodo = document.getElementById('tplRenombrar').content.firstElementChild.cloneNode(true);
+      document.body.appendChild(nodo);
+      const f = nodo.querySelector('form');
+      f.nombre.value = c.nombre;
+      f.querySelector('.cancelar').onclick = () => nodo.remove();
+      f.addEventListener('submit', async (e2) => {
+        e2.preventDefault();
+        const r = await api('PUT', `/api/categorias/${c.id}`, { nombre: f.nombre.value });
+        if (!r.ok) { alerta(f.querySelector('.msgModal'), 'error', r.data.error); marcarErrores(f, r.data.campos); return; }
+        nodo.remove();
+        alerta('msg', r.data.sinCambios ? 'info' : 'ok', r.data.mensaje);
+        cargar();
+      });
+      return;
+    }
+    if (acc === 'eliminar') {
+      const ok = await confirmar({ titulo: 'Eliminar categoría', texto: `¿Querés eliminar la categoría «${c.nombre}»? Esta acción no se puede deshacer.`, boton: 'Eliminar', peligro: true });
+      if (!ok) return;
+      const r = await api('DELETE', `/api/categorias/${c.id}`);
+      alerta('msg', r.ok ? 'ok' : 'error', r.ok ? r.data.mensaje : r.data.error);
+      cargar();
+      return;
+    }
+    if (acc === 'desactivar') {
+      const ok = await confirmar({ titulo: 'Desactivar categoría', texto: `La categoría «${c.nombre}» dejará de ofrecerse al registrar equipos. Los ${c.equipos} equipo(s) que ya la tienen la conservan.`, boton: 'Desactivar' });
+      if (!ok) return;
+    }
+    const r = await api('POST', `/api/categorias/${c.id}/${acc}`);
+    alerta('msg', r.ok ? 'ok' : 'error', r.ok ? r.data.mensaje : r.data.error);
+    cargar();
+  });
+
+  (async () => { await iniciarLayout('categorias'); cargar(); })();
+</script>
+</body>
+</html>

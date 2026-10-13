@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestIT · Auditoría</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main>
+  <h1>Registro de auditoría</h1>
+  <div id="msg" class="oculto" data-testid="auditoria-mensaje" role="alert"></div>
+
+  <form class="card" id="formFiltros" data-testid="form-filtros-auditoria" novalidate>
+    <div class="fila">
+      <div class="campo"><label for="usuario">Usuario</label><select id="usuario" name="usuario" data-testid="filtro-usuario"></select></div>
+      <div class="campo"><label for="accion">Tipo de acción</label><select id="accion" name="accion" data-testid="filtro-accion"></select></div>
+      <div class="campo"><label for="entidad">Entidad</label><select id="entidad" name="entidad" data-testid="filtro-entidad"></select></div>
+      <div class="campo"><label for="desde">Desde</label><input type="date" id="desde" name="desde" data-testid="filtro-desde"><div class="error-campo" data-error="desde"></div></div>
+      <div class="campo"><label for="hasta">Hasta</label><input type="date" id="hasta" name="hasta" data-testid="filtro-hasta"><div class="error-campo" data-error="hasta"></div></div>
+      <div class="campo fila">
+        <button type="submit" class="btn" data-testid="btn-filtrar-auditoria">Filtrar</button>
+        <button type="button" class="btn sec" id="btnLimpiar" data-testid="btn-limpiar-auditoria">Limpiar filtros</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="tabla-cont">
+      <table data-testid="tabla-auditoria">
+        <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Identificador</th><th>Detalle</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table>
+    </div>
+    <div id="sinResultados" class="vacio oculto" data-testid="auditoria-sin-resultados">No hay registros de auditoría que coincidan con los filtros aplicados.</div>
+    <div class="paginacion" id="paginacion" data-testid="auditoria-paginacion"></div>
+    <p class="ayuda">Los registros de auditoría son de sólo lectura: no pueden modificarse ni eliminarse.</p>
+  </div>
+</main>
+<script src="/js/common.js"></script>
+<script>
+  const form = document.getElementById('formFiltros');
+  const opcion = (v, t) => `<option value="${esc(v)}">${esc(t)}</option>`;
+
+  function detalleHTML(d) {
+    if (!d) return '—';
+    return Object.entries(d).map(([k, v]) => {
+      if (v && typeof v === 'object' && 'anterior' in v && 'nuevo' in v) {
+        return `<div><b>${esc(k)}</b>: ${esc(v.anterior ?? '—')} → ${esc(v.nuevo ?? '—')}</div>`;
+      }
+      return `<div><b>${esc(k)}</b>: ${esc(v ?? '—')}</div>`;
+    }).join('');
+  }
+
+  async function cargar(pagina = 1) {
+    limpiarErrores(form);
+    const p = new URLSearchParams();
+    ['usuario', 'accion', 'entidad', 'desde', 'hasta'].forEach((n) => { if (form[n].value) p.set(n, form[n].value); });
+    if (pagina > 1) p.set('pagina', pagina);
+    const r = await api('GET', '/api/auditoria?' + p);
+    if (!r.ok) { alerta('msg', 'error', r.data.error); marcarErrores(form, r.data.campos); return; }
+    alerta('msg');
+    const tabla = document.querySelector('[data-testid=tabla-auditoria]');
+    tabla.classList.toggle('oculto', r.data.total === 0);
+    document.getElementById('sinResultados').classList.toggle('oculto', r.data.total !== 0);
+    document.getElementById('cuerpo').innerHTML = r.data.registros.map((a) => `
+      <tr data-testid="fila-auditoria">
+        <td class="mono" style="white-space:nowrap">${esc(a.fecha)}</td>
+        <td>${esc(a.usuario || '—')}</td>
+        <td>${esc(a.accion)}</td>
+        <td>${esc(a.entidad)}</td>
+        <td class="mono">${esc(a.identificador || '—')}</td>
+        <td>${detalleHTML(a.detalle)}</td>
+      </tr>`).join('');
+    const pag = document.getElementById('paginacion');
+    pag.innerHTML = r.data.total ? paginacionHTML(r.data, 'auditoria') : '';
+    pag.querySelectorAll('[data-pag]').forEach((b) => b.addEventListener('click', () => cargar(parseInt(b.dataset.pag, 10))));
+  }
+
+  form.addEventListener('submit', (ev) => { ev.preventDefault(); cargar(1); });
+  document.getElementById('btnLimpiar').addEventListener('click', () => { form.reset(); cargar(1); });
+
+  (async () => {
+    await iniciarLayout('auditoria');
+    const o = (await api('GET', '/api/auditoria/opciones')).data;
+    form.usuario.innerHTML = opcion('', 'Todos') + o.usuarios.map((u) => opcion(u, u)).join('');
+    form.accion.innerHTML = opcion('', 'Todas') + o.acciones.map((u) => opcion(u, u)).join('');
+    form.entidad.innerHTML = opcion('', 'Todas') + o.entidades.map((u) => opcion(u, u)).join('');
+    cargar(1);
+  })();
+</script>
+</body>
+</html>
