@@ -1,0 +1,15 @@
+{
+  "name": "gestit-v1-tests",
+  "private": true,
+  "description": "Pruebas automatizadas de GestIT V1 (API + interfaz) trazadas a los criterios de aceptación de HU-01 a HU-13",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "test:tiempos": "playwright test --project=tiempos",
+    "reporte": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
